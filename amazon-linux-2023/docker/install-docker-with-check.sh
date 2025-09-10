@@ -71,143 +71,57 @@ echo "==================================="
 docker --version
 docker compose version
 
-# ここからインストールチェック
+# インストール確認
 echo ""
 echo "==================================="
-echo "インストール状態をチェックしています..."
+echo "インストール確認中..."
 echo "==================================="
+
+# 基本チェック
+check_result="OK"
+
+echo -n "Docker コマンド: "
+if command -v docker >/dev/null 2>&1; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${RED}NG${NC}"
+    check_result="NG"
+fi
+
+echo -n "Docker サービス: "
+if sudo systemctl is-active docker >/dev/null 2>&1; then
+    echo -e "${GREEN}起動中${NC}"
+else
+    echo -e "${RED}停止中${NC}"
+    check_result="NG"
+fi
+
+echo -n "Docker Compose: "
+if sudo docker compose version >/dev/null 2>&1; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${RED}NG${NC}"
+    check_result="NG"
+fi
+
+echo -n "動作テスト: "
+if sudo docker run --rm hello-world >/dev/null 2>&1; then
+    echo -e "${GREEN}OK${NC}"
+    sudo docker rmi hello-world >/dev/null 2>&1 || true
+else
+    echo -e "${RED}NG${NC}"
+    check_result="NG"
+fi
+
 echo ""
-
-# チェック結果カウンター
-PASS_COUNT=0
-FAIL_COUNT=0
-WARN_COUNT=0
-
-# 1. Docker コマンドの存在確認
-echo "1. Docker コマンドチェック..."
-if command -v docker &> /dev/null; then
-    echo -e "  ${GREEN}✓${NC} Docker コマンドが見つかりました"
-    ((PASS_COUNT++))
+if [ "$check_result" = "OK" ]; then
+    echo -e "${GREEN}✅ インストール完了！${NC}"
+    echo ""
+    echo "次のステップ："
+    echo -e "1. ${YELLOW}newgrp docker${NC} または再ログインしてグループ権限を有効化"
+    echo -e "2. ${BLUE}docker run hello-world${NC} で動作確認"
 else
-    echo -e "  ${RED}✗${NC} Docker コマンドが見つかりません"
-    ((FAIL_COUNT++))
-fi
-
-# 2. Docker サービスの状態確認
-echo "2. Docker サービス状態チェック..."
-if sudo systemctl is-active docker &> /dev/null; then
-    echo -e "  ${GREEN}✓${NC} Docker サービスが起動しています"
-    ((PASS_COUNT++))
-else
-    echo -e "  ${RED}✗${NC} Docker サービスが起動していません"
-    ((FAIL_COUNT++))
-fi
-
-if sudo systemctl is-enabled docker &> /dev/null; then
-    echo -e "  ${GREEN}✓${NC} Docker サービスの自動起動が有効です"
-    ((PASS_COUNT++))
-else
-    echo -e "  ${YELLOW}⚠${NC} Docker サービスの自動起動が無効です"
-    ((WARN_COUNT++))
-fi
-
-# 3. Docker グループメンバーシップ確認
-echo "3. Docker グループ権限チェック..."
-if groups $USER | grep -q docker; then
-    echo -e "  ${GREEN}✓${NC} ユーザー '$USER' は docker グループに追加されました"
-    echo -e "  ${YELLOW}⚠${NC} 注意: グループ権限を反映するには再ログインが必要です${NC}"
-    ((PASS_COUNT++))
-    ((WARN_COUNT++))
-else
-    echo -e "  ${RED}✗${NC} ユーザー '$USER' の docker グループ追加に失敗しました"
-    ((FAIL_COUNT++))
-fi
-
-# 4. Docker Compose チェック（プラグイン版）
-echo "4. Docker Compose (プラグイン版) チェック..."
-if sudo docker compose version &> /dev/null; then
-    echo -e "  ${GREEN}✓${NC} Docker Compose プラグインが正常にインストールされました"
-    ((PASS_COUNT++))
-else
-    echo -e "  ${RED}✗${NC} Docker Compose プラグインのインストールに失敗しました"
-    ((FAIL_COUNT++))
-fi
-
-# 5. Docker Compose チェック（スタンドアロン版）
-echo "5. Docker Compose (スタンドアロン版) チェック..."
-if command -v docker-compose &> /dev/null; then
-    echo -e "  ${GREEN}✓${NC} docker-compose コマンドが使用可能です"
-    ((PASS_COUNT++))
-else
-    echo -e "  ${RED}✗${NC} docker-compose コマンドが見つかりません"
-    ((FAIL_COUNT++))
-fi
-
-# 6. Docker 基本動作テスト
-echo "6. Docker 基本動作テスト..."
-if sudo docker run --rm hello-world &> /dev/null; then
-    echo -e "  ${GREEN}✓${NC} Docker は正常に動作しています"
-    ((PASS_COUNT++))
-    # クリーンアップ
-    sudo docker rmi hello-world &> /dev/null 2>&1 || true
-else
-    echo -e "  ${RED}✗${NC} Docker の動作テストに失敗しました"
-    ((FAIL_COUNT++))
-fi
-
-# 7. ディスク容量チェック
-echo "7. ディスク容量チェック..."
-DOCKER_ROOT=$(sudo docker info 2>/dev/null | grep "Docker Root Dir" | awk '{print $NF}')
-if [ -n "$DOCKER_ROOT" ]; then
-    DISK_USAGE=$(df -h $DOCKER_ROOT 2>/dev/null | tail -1 | awk '{print $5}' | sed 's/%//')
-    AVAILABLE=$(df -h $DOCKER_ROOT 2>/dev/null | tail -1 | awk '{print $4}')
-    
-    if [ -n "$DISK_USAGE" ] && [ "$DISK_USAGE" -lt 80 ]; then
-        echo -e "  ${GREEN}✓${NC} 十分なディスク容量があります (利用率: ${DISK_USAGE}%, 空き: ${AVAILABLE})"
-        ((PASS_COUNT++))
-    elif [ -n "$DISK_USAGE" ]; then
-        echo -e "  ${YELLOW}⚠${NC} ディスク容量が少なくなっています (利用率: ${DISK_USAGE}%, 空き: ${AVAILABLE})"
-        ((WARN_COUNT++))
-    fi
-fi
-
-# 結果サマリー
-echo ""
-echo "==================================="
-echo "インストールチェック結果"
-echo "==================================="
-echo -e "成功: ${GREEN}${PASS_COUNT}${NC} 項目"
-echo -e "警告: ${YELLOW}${WARN_COUNT}${NC} 項目"
-echo -e "失敗: ${RED}${FAIL_COUNT}${NC} 項目"
-
-if [ $FAIL_COUNT -eq 0 ]; then
-    echo ""
-    echo -e "${GREEN}✅ Docker は正常にインストールされました！${NC}"
-    echo ""
-    echo "==================================="
-    echo "次のステップ"
-    echo "==================================="
-    echo ""
-    echo "Docker グループの権限を有効にするため、以下のいずれかを実行してください："
-    echo ""
-    echo "オプション 1: 現在のセッションで有効化（一時的）"
-    echo -e "  ${YELLOW}newgrp docker${NC}"
-    echo ""
-    echo "オプション 2: 再ログイン（恒久的）"
-    echo -e "  ${YELLOW}exit${NC} して再度 SSH 接続"
-    echo ""
-    echo "その後、以下のコマンドで動作確認できます："
-    echo -e "  ${BLUE}docker run hello-world${NC}"
-    echo ""
-else
-    echo ""
-    echo -e "${RED}❌ インストール中に問題が発生しました${NC}"
-    echo "上記のエラーメッセージを確認して、問題を解決してください。"
-    echo ""
-    echo "トラブルシューティング："
-    echo "1. インターネット接続を確認"
-    echo "2. sudo 権限があることを確認"
-    echo "3. エラーメッセージに従って対処"
-    echo ""
+    echo -e "${RED}❌ インストールに問題があります${NC}"
+    echo "エラーを確認して再度実行してください。"
     exit 1
 fi
